@@ -21,9 +21,13 @@ public class EmailService {
     private final QRCodeService qrCodeService;
     private final Resend resend;
 
-    @Value("${labcompare.app.from-email:onboarding@resend.dev}")
-    private String fromEmail;
+//    @Value("${labcompare.app.from-email:onboarding@resend.dev}")
+//    private String fromEmail;
 
+    
+    @Value("${labcompare.app.from-email:no-reply@labchain.in}")
+    private String fromEmail;
+    
     @Value("${labcompare.app.support-email:support@labcompare.in}")
     private String supportEmail;
 

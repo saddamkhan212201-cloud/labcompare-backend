@@ -1,12 +1,13 @@
 package com.labcompare.service;
 
 import com.labcompare.dto.BookingDTO;
-import jakarta.mail.internet.MimeMessage;
+import com.resend.Resend;
+import com.resend.core.exception.ResendException;
+import com.resend.services.emails.model.CreateEmailOptions;
+import com.resend.services.emails.model.CreateEmailResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -17,10 +18,10 @@ public class EmailService {
 
     private static final Logger log = LoggerFactory.getLogger(EmailService.class);
 
-    private final JavaMailSender mailSender;
     private final QRCodeService qrCodeService;
+    private final Resend resend;
 
-    @Value("${spring.mail.username:}")
+    @Value("${labcompare.app.from-email:onboarding@resend.dev}")
     private String fromEmail;
 
     @Value("${labcompare.app.support-email:support@labcompare.in}")
@@ -29,8 +30,9 @@ public class EmailService {
     @Value("${labcompare.app.name:LabCompare}")
     private String appName;
 
-    public EmailService(JavaMailSender mailSender, QRCodeService qrCodeService) {
-        this.mailSender    = mailSender;
+    public EmailService(@Value("${resend.api-key}") String apiKey,
+                        QRCodeService qrCodeService) {
+        this.resend = new Resend(apiKey);
         this.qrCodeService = qrCodeService;
     }
 
@@ -38,21 +40,24 @@ public class EmailService {
     public void sendBookingConfirmation(BookingDTO booking) {
         if (booking.getEmail() == null || booking.getEmail().isBlank()) return;
         try {
-            // Generate fresh scannable UPI QR via ZXing (perfect quality)
             String qrBase64 = null;
             try { qrBase64 = qrCodeService.generateBookingQR(booking); }
             catch (Exception e) { log.warn("[Email] QR failed: {}", e.getMessage()); }
 
-            MimeMessage msg = mailSender.createMimeMessage();
-            MimeMessageHelper h = new MimeMessageHelper(msg, true, "UTF-8");
-            h.setFrom(fromEmail, appName);
-            h.setTo(booking.getEmail());
-            h.setSubject("✅ Booking Confirmed – " + booking.getTestName()
-                    + " at " + booking.getLabName() + " | " + booking.getBookingRef());
-            h.setText(buildConfirmationHtml(booking, qrBase64), true);
-            mailSender.send(msg);
-            log.info("[Email] ✅ Sent to {} for {}", booking.getEmail(), booking.getBookingRef());
-        } catch (Exception e) {
+            String subject = "✅ Booking Confirmed – " + booking.getTestName()
+                    + " at " + booking.getLabName() + " | " + booking.getBookingRef();
+
+            CreateEmailOptions params = CreateEmailOptions.builder()
+                    .from(appName + " <" + fromEmail + ">")
+                    .to(booking.getEmail())
+                    .subject(subject)
+                    .html(buildConfirmationHtml(booking, qrBase64))
+                    .build();
+
+            CreateEmailResponse response = resend.emails().send(params);
+            log.info("[Email] ✅ Sent to {} for {} | id={}", booking.getEmail(), booking.getBookingRef(), response.getId());
+
+        } catch (ResendException e) {
             log.error("[Email] ❌ Failed for {}: {}", booking.getBookingRef(), e.getMessage());
         }
     }
@@ -61,16 +66,20 @@ public class EmailService {
     public void sendCancellationEmail(BookingDTO booking) {
         if (booking.getEmail() == null || booking.getEmail().isBlank()) return;
         try {
-            MimeMessage msg = mailSender.createMimeMessage();
-            MimeMessageHelper h = new MimeMessageHelper(msg, true, "UTF-8");
-            h.setFrom(fromEmail, appName);
-            h.setTo(booking.getEmail());
-            h.setSubject("❌ Booking Cancelled – " + booking.getTestName()
-                    + " | " + booking.getBookingRef());
-            h.setText(buildCancellationHtml(booking), true);
-            mailSender.send(msg);
-            log.info("[Email] ✅ Cancellation sent to {}", booking.getEmail());
-        } catch (Exception e) {
+            String subject = "❌ Booking Cancelled – " + booking.getTestName()
+                    + " | " + booking.getBookingRef();
+
+            CreateEmailOptions params = CreateEmailOptions.builder()
+                    .from(appName + " <" + fromEmail + ">")
+                    .to(booking.getEmail())
+                    .subject(subject)
+                    .html(buildCancellationHtml(booking))
+                    .build();
+
+            CreateEmailResponse response = resend.emails().send(params);
+            log.info("[Email] ✅ Cancellation sent to {} | id={}", booking.getEmail(), response.getId());
+
+        } catch (ResendException e) {
             log.error("[Email] ❌ Cancellation failed: {}", e.getMessage());
         }
     }
@@ -88,21 +97,20 @@ public class EmailService {
         double testPrice   = b.getTestPrice()   != null ? b.getTestPrice()   : 0.0;
         double totalAmount = b.getTotalAmount() != null ? b.getTotalAmount() : testPrice;
         String homeFeeRow  = "HOME".equalsIgnoreCase(b.getCollectionType())
-                ? "<tr><td class='lb'>Home Collection Fee</td><td class='vl'>₹50</td></tr>" : "";
+                ? "<tr><td class='lb'>Home Collection Fee</td><td class='vl'>&#8377;50</td></tr>" : "";
         String bookedAt = b.getCreatedAt() != null
                 ? b.getCreatedAt().format(DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a")) : "";
 
-        // QR section — generated fresh by ZXing, perfectly scannable
         String qrSection = (qrBase64 != null) ? """
             <div class="qr-box">
-              <div class="qr-title">📱 Scan &amp; Pay with any UPI App</div>
-              <div class="qr-sub">GPay · PhonePe · Paytm · BHIM · Any UPI App</div>
+              <div class="qr-title">&#128241; Scan &amp; Pay with any UPI App</div>
+              <div class="qr-sub">GPay &middot; PhonePe &middot; Paytm &middot; BHIM &middot; Any UPI App</div>
               <img src="data:image/png;base64,%s"
                    alt="LabCompare UPI QR"
                    style="width:210px;height:210px;display:block;margin:14px auto;
                           border:3px solid #c5d5f8;border-radius:10px;padding:6px;background:#fff;"/>
               <div class="qr-ref">%s</div>
-              <div class="qr-hint">Amount: ₹%.0f · UPI: saddamkhan212201@oksbi</div>
+              <div class="qr-hint">Amount: &#8377;%.0f &middot; UPI: saddamkhan212201@oksbi</div>
             </div>""".formatted(qrBase64, b.getBookingRef(), totalAmount) : "";
 
         return """
@@ -158,9 +166,9 @@ public class EmailService {
         </style></head><body>
         <div class="wrap">
           <div class="hdr">
-            <div class="logo">🔬 Lab<span>Compare</span></div>
+            <div class="logo">&#128302; Lab<span>Compare</span></div>
             <div class="tag">Lab Test Price Comparison &amp; Booking</div>
-            <div class="badge">✅ Booking Confirmed</div>
+            <div class="badge">&#9989; Booking Confirmed</div>
           </div>
           <div class="body">
             <p style="font-size:15px;color:#444;line-height:1.6;margin-bottom:20px;">
@@ -172,15 +180,15 @@ public class EmailService {
               %s
             </div>
             <div class="thl">
-              <div class="tn">🧪 %s</div>
-              <div class="ln">📍 %s</div>
+              <div class="tn">&#129514; %s</div>
+              <div class="ln">&#128205; %s</div>
             </div>
             %s
             <div class="card">
-              <div class="ct">📅 Appointment Details</div>
+              <div class="ct">&#128197; Appointment Details</div>
               <table class="d">
                 <tr><td class="lb">Date</td><td class="vl">%s</td></tr>
-                <tr><td class="lb">Time Slot</td><td class="vl">🕐 %s</td></tr>
+                <tr><td class="lb">Time Slot</td><td class="vl">&#128336; %s</td></tr>
                 <tr><td class="lb">Lab</td><td class="vl">%s</td></tr>
                 <tr><td class="lb">Patient</td><td class="vl">%s</td></tr>
                 <tr><td class="lb">Age</td><td class="vl">%s Yrs</td></tr>
@@ -192,31 +200,31 @@ public class EmailService {
               <div class="cd">%s</div>
             </div>
             <div class="card">
-              <div class="ct">💳 Payment Summary</div>
+              <div class="ct">&#128179; Payment Summary</div>
               <table class="d">
-                <tr><td class="lb">%s</td><td class="vl">₹%.0f</td></tr>
+                <tr><td class="lb">%s</td><td class="vl">&#8377;%.0f</td></tr>
                 %s
                 <tr><td class="lb" style="font-weight:700;color:#333;">Total</td>
-                    <td class="vl hi">₹%.0f</td></tr>
+                    <td class="vl hi">&#8377;%.0f</td></tr>
                 <tr><td class="lb">Payment</td><td class="vl">%s</td></tr>
               </table>
             </div>
             <div style="margin-bottom:16px;">
               <div style="font-size:12px;font-weight:700;color:#333;margin-bottom:10px;
-                          text-transform:uppercase;letter-spacing:0.5px;">📋 What to do next</div>
+                          text-transform:uppercase;letter-spacing:0.5px;">&#128203; What to do next</div>
               <div class="step"><div class="num">1</div>Scan QR above to pay OR show Booking ID <strong>%s</strong></div>
-              <div class="step"><div class="num">2</div>Fast 8–12 hours if your test requires it</div>
+              <div class="step"><div class="num">2</div>Fast 8-12 hours if your test requires it</div>
               <div class="step"><div class="num">3</div>Carry a valid photo ID to the lab</div>
               <div class="step"><div class="num">4</div>Arrive 10 minutes before your slot</div>
             </div>
             <div class="tip">
-              💡 Scan the QR with GPay, PhonePe or Paytm. Amount ₹%.0f is pre-filled — one tap to pay!
+              &#128161; Scan the QR with GPay, PhonePe or Paytm. Amount &#8377;%.0f is pre-filled - one tap to pay!
             </div>
           </div>
           <div class="ftr">
             Automated confirmation from <strong>LabCompare</strong><br/>
             Questions? <a href="mailto:%s">%s</a><br/>
-            <span style="color:#bbb;">© 2025 LabCompare · All rights reserved</span>
+            <span style="color:#bbb;">&#169; 2025 LabCompare &middot; All rights reserved</span>
           </div>
         </div></body></html>
         """.formatted(
@@ -264,7 +272,7 @@ public class EmailService {
           .f a{color:#1a73e8;text-decoration:none;}
         </style></head><body>
         <div class="w">
-          <div class="h"><h1>🔬 LabCompare</h1><div class="badge">❌ Booking Cancelled</div></div>
+          <div class="h"><h1>&#128302; LabCompare</h1><div class="badge">&#10060; Booking Cancelled</div></div>
           <div class="b">
             <p style="font-size:14px;color:#444;margin-bottom:18px;">
               Hi <strong>%s</strong>,<br/>Your booking has been <strong>cancelled</strong>.</p>
@@ -272,12 +280,12 @@ public class EmailService {
             <div class="card">
               <div class="row"><span>Test</span><span><strong>%s</strong></span></div>
               <div class="row"><span>Lab</span><span>%s</span></div>
-              <div class="row"><span>Amount</span><span>₹%.0f</span></div>
+              <div class="row"><span>Amount</span><span>&#8377;%.0f</span></div>
               <div class="row"><span>Status</span><span style="color:#e53935;font-weight:700;">Cancelled</span></div>
             </div>
-            <div class="note">💚 <strong>Refund:</strong> If paid online, refund within 5–7 business days.</div>
+            <div class="note">&#128154; <strong>Refund:</strong> If paid online, refund within 5-7 business days.</div>
           </div>
-          <div class="f">Questions? <a href="mailto:%s">%s</a><br/>© 2025 LabCompare</div>
+          <div class="f">Questions? <a href="mailto:%s">%s</a><br/>&#169; 2025 LabCompare</div>
         </div></body></html>
         """.formatted(
                 b.getPatientName() != null ? b.getPatientName() : "Valued Customer",

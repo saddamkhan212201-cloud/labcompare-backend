@@ -77,7 +77,11 @@
             <artifactId>spring-boot-starter-tomcat</artifactId>
             <scope>provided</scope>
         </dependency>
-
+<dependency>
+    <groupId>com.resend</groupId>
+    <artifactId>resend-java</artifactId>
+    <version>3.1.0</version>
+</dependency>
 
         <!-- Spring Security -->
         <dependency>

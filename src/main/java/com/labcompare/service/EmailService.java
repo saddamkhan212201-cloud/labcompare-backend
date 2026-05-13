@@ -28,10 +28,10 @@ public class EmailService {
     @Value("${labcompare.app.from-email:no-reply@labchain.in}")
     private String fromEmail;
     
-    @Value("${labcompare.app.support-email:support@labcompare.in}")
+    @Value("${labcompare.app.support-email:support@LabChain.in}")
     private String supportEmail;
 
-    @Value("${labcompare.app.name:LabCompare}")
+    @Value("${labcompare.app.name:LabChain}")
     private String appName;
 
     public EmailService(@Value("${resend.api-key}") String apiKey,

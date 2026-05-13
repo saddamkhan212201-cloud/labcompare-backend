@@ -10,10 +10,12 @@ D:\NadimDreamproject\labcompare-final-clean\labcompare-output\labcompare-backend
 D:\NadimDreamproject\labcompare-final-clean\labcompare-output\labcompare-backend\src\main\java\com\labcompare\service\BookingService.java
 D:\NadimDreamproject\labcompare-final-clean\labcompare-output\labcompare-backend\src\main\java\com\labcompare\controller\PriceController.java
 D:\NadimDreamproject\labcompare-final-clean\labcompare-output\labcompare-backend\src\main\java\com\labcompare\config\DataSeeder.java
+D:\NadimDreamproject\labcompare-final-clean\labcompare-output\labcompare-backend\src\main\java\com\labcompare\controller\PrescriptionNotifyController.java
 D:\NadimDreamproject\labcompare-final-clean\labcompare-output\labcompare-backend\src\main\java\com\labcompare\service\TestService.java
 D:\NadimDreamproject\labcompare-final-clean\labcompare-output\labcompare-backend\src\main\java\com\labcompare\service\LabService.java
 D:\NadimDreamproject\labcompare-final-clean\labcompare-output\labcompare-backend\src\main\java\com\labcompare\config\SecurityConfig.java
 D:\NadimDreamproject\labcompare-final-clean\labcompare-output\labcompare-backend\src\main\java\com\labcompare\controller\UserController.java
+D:\NadimDreamproject\labcompare-final-clean\labcompare-output\labcompare-backend\src\main\java\com\labcompare\service\PrescriptionNotifyService.java
 D:\NadimDreamproject\labcompare-final-clean\labcompare-output\labcompare-backend\src\main\java\com\labcompare\controller\BookingController.java
 D:\NadimDreamproject\labcompare-final-clean\labcompare-output\labcompare-backend\src\main\java\com\labcompare\dto\PriceRequest.java
 D:\NadimDreamproject\labcompare-final-clean\labcompare-output\labcompare-backend\src\main\java\com\labcompare\model\Booking.java

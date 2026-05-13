@@ -10,6 +10,7 @@ com\labcompare\dto\LoginRequest.class
 com\labcompare\controller\PrescriptionController.class
 com\labcompare\controller\TestController.class
 com\labcompare\dto\LoginResponse.class
+com\labcompare\controller\PrescriptionNotifyController.class
 com\labcompare\model\Test.class
 com\labcompare\LabCompareApplication.class
 com\labcompare\dto\TestRequest.class
@@ -25,6 +26,7 @@ com\labcompare\model\Booking$BookingStatus.class
 com\labcompare\config\SecurityConfig.class
 com\labcompare\service\PriceService.class
 com\labcompare\config\GlobalExceptionHandler.class
+com\labcompare\service\PrescriptionNotifyService.class
 com\labcompare\controller\SpaController.class
 com\labcompare\service\PrescriptionParserService.class
 com\labcompare\dto\LabDTO.class

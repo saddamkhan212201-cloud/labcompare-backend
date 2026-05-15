@@ -10,6 +10,7 @@ com\labcompare\dto\LoginRequest.class
 com\labcompare\controller\PrescriptionController.class
 com\labcompare\controller\TestController.class
 com\labcompare\dto\LoginResponse.class
+com\labcompare\service\RazorpayService.class
 com\labcompare\controller\PrescriptionNotifyController.class
 com\labcompare\model\Test.class
 com\labcompare\LabCompareApplication.class
@@ -32,6 +33,7 @@ com\labcompare\service\PrescriptionParserService.class
 com\labcompare\dto\LabDTO.class
 com\labcompare\model\User$Role.class
 com\labcompare\service\QRCodeService.class
+com\labcompare\controller\RazorpayController.class
 com\labcompare\config\DataSeeder.class
 com\labcompare\model\Booking$PaymentMethod.class
 com\labcompare\repository\LabTestPriceRepository.class

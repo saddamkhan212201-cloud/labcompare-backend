@@ -14,31 +14,42 @@ import java.util.stream.Collectors;
 @Transactional
 public class BookingService {
 
-    private final BookingRepository bookingRepository;
-    private final LabRepository labRepository;
-    private final TestRepository testRepository;
-    private final LabTestPriceRepository priceRepository;
-    private final EmailService emailService;
+    private final BookingRepository       bookingRepository;
+    private final LabRepository           labRepository;
+    private final TestRepository          testRepository;
+    private final LabTestPriceRepository  priceRepository;
+    private final EmailService            emailService;
 
     public BookingService(BookingRepository bookingRepository, LabRepository labRepository,
                           TestRepository testRepository, LabTestPriceRepository priceRepository,
                           EmailService emailService) {
         this.bookingRepository = bookingRepository;
-        this.labRepository = labRepository;
-        this.testRepository = testRepository;
-        this.priceRepository = priceRepository;
-        this.emailService = emailService;
+        this.labRepository     = labRepository;
+        this.testRepository    = testRepository;
+        this.priceRepository   = priceRepository;
+        this.emailService      = emailService;
     }
 
+    /**
+     * Creates and persists the booking record.
+     *
+     * NOTE: No email is sent here intentionally.
+     * The confirmation email is sent ONLY after Razorpay payment is verified,
+     * via RazorpayController → PrescriptionNotifyService.sendPaymentSuccessToTeam().
+     * For CASH bookings the frontend should call /api/razorpay/confirm-cash-booking
+     * or you can re-enable the email below only for CASH if needed.
+     */
     public BookingDTO createBooking(BookingRequest req) {
-        Lab lab = labRepository.findById(req.getLabId()).orElseThrow(() -> new EntityNotFoundException("Lab not found"));
-        Test test = testRepository.findById(req.getTestId()).orElseThrow(() -> new EntityNotFoundException("Test not found"));
+        Lab lab   = labRepository.findById(req.getLabId())
+                .orElseThrow(() -> new EntityNotFoundException("Lab not found"));
+        Test test = testRepository.findById(req.getTestId())
+                .orElseThrow(() -> new EntityNotFoundException("Test not found"));
         LabTestPrice price = priceRepository.findByLabIdAndTestId(req.getLabId(), req.getTestId())
                 .orElseThrow(() -> new EntityNotFoundException("Price not configured for this lab and test"));
 
-        double testPrice = price.getEffectivePrice();
+        double testPrice     = price.getEffectivePrice();
         double collectionFee = req.getCollectionType() == Booking.CollectionType.HOME ? 50.0 : 0.0;
-        String ref = "LC" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        String ref           = "LC" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
 
         Booking booking = new Booking();
         booking.setBookingRef(ref);
@@ -58,12 +69,9 @@ public class BookingService {
         booking.setPaymentMethod(req.getPaymentMethod());
         booking.setStatus(Booking.BookingStatus.CONFIRMED);
 
-        BookingDTO dto = toDTO(bookingRepository.save(booking));
-
-        // Send confirmation email asynchronously (non-blocking on failure)
-        try { emailService.sendBookingConfirmation(dto); } catch (Exception ignored) {}
-
-        return dto;
+        // ── Save and return DTO ──────────────────────────────────────────────
+        // EMAIL IS NOT SENT HERE — it fires after payment verification only.
+        return toDTO(bookingRepository.save(booking));
     }
 
     public BookingDTO getByRef(String ref) {

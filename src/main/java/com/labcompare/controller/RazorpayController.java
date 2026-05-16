@@ -21,9 +21,15 @@ import java.util.UUID;
  *
  *  POST /api/razorpay/verify-payment
  *       Body : { razorpay_order_id, razorpay_payment_id, razorpay_signature,
- *                userName, userPhone, tests: [...], amount }
+ *                userName, userPhone, tests: [...], amount,
+ *                bookingRef?, labName?, appointmentDate?, appointmentSlot?,
+ *                collectionType?, collectionAddress? }
  *       Verifies HMAC-SHA256 signature → on success fires team email (async)
  *       Returns: { success, message, payment_id, order_id }
+ *
+ * The optional booking fields (bookingRef, labName, etc.) are sent by the
+ * Compare Test booking flow to produce a richer team email.
+ * The prescription scanner flow sends null for all booking fields — backward compatible.
  */
 @RestController
 @RequestMapping("/api/razorpay")
@@ -64,13 +70,12 @@ public class RazorpayController {
             long amountInRupees = ((Number) amountObj).longValue();
             long amountInPaise  = amountInRupees * 100;
 
-            // Short unique receipt visible in Razorpay dashboard
             String receipt = "RX-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-            String notes   = "Prescription review fee — " + userName + " | " + userPhone;
+            String notes   = "LabChain payment — " + userName + " | " + userPhone;
 
             Map<String, Object> order = razorpayService.createOrder(amountInPaise, receipt, notes);
 
-            // Inject your public key so Angular doesn't need it hard-coded
+            // Inject public key so Angular doesn't need it hard-coded
             order.put("key", razorpayKeyId);
 
             return ResponseEntity.ok(order);
@@ -82,7 +87,11 @@ public class RazorpayController {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // STEP 2 — Angular calls this after Razorpay's handler fires on success
+    // STEP 2 — Angular calls this after Razorpay's handler fires on success.
+    //
+    // Accepts optional booking context fields so the team email is rich
+    // when called from the Compare Test booking flow.
+    // The prescription scanner sends null for all booking fields — that is fine.
     // ─────────────────────────────────────────────────────────────────────────
     @PostMapping("/verify-payment")
     public ResponseEntity<?> verifyPayment(@RequestBody Map<String, Object> req) {
@@ -97,10 +106,18 @@ public class RazorpayController {
             @SuppressWarnings("unchecked")
             List<String> tests = (List<String>) req.get("tests");
 
+            // Optional booking-specific fields (present only from Compare Test booking flow)
+            String bookingRef        = (String) req.get("bookingRef");
+            String labName           = (String) req.get("labName");
+            String appointmentDate   = (String) req.get("appointmentDate");
+            String appointmentSlot   = (String) req.get("appointmentSlot");
+            String collectionType    = (String) req.get("collectionType");
+            String collectionAddress = (String) req.get("collectionAddress");
+
             if (orderId == null || paymentId == null || signature == null)
                 return badRequest("razorpay_order_id, razorpay_payment_id and razorpay_signature are required");
 
-            // ── HMAC-SHA256 signature check (no external call) ──────────────
+            // ── HMAC-SHA256 signature verification (offline, no HTTP call) ──
             boolean valid = razorpayService.verifySignature(orderId, paymentId, signature);
             if (!valid) {
                 log.warn("[RazorpayController] ⚠️  Invalid signature | orderId={}", orderId);
@@ -109,10 +126,13 @@ public class RazorpayController {
                            "message", "Payment verification failed. Please contact support."));
             }
 
-            // ── Signature OK → queue team email (async, non-blocking) ───────
+            // ── Signature OK → queue team email async ───────────────────────
             long amount = amountObj != null ? ((Number) amountObj).longValue() : 0L;
+
             notifyService.sendPaymentSuccessToTeam(
-                    userName, userPhone, tests, amount, orderId, paymentId);
+                    userName, userPhone, tests, amount, orderId, paymentId,
+                    bookingRef, labName, appointmentDate, appointmentSlot,
+                    collectionType, collectionAddress);
 
             log.info("[RazorpayController] ✅ Verified & email queued | orderId={} paymentId={}",
                     orderId, paymentId);

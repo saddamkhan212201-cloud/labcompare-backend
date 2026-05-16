@@ -22,6 +22,7 @@ public class PrescriptionNotifyController {
     public ResponseEntity<?> notify(
             @RequestParam("userName") String userName,
             @RequestParam("userPhone") String userPhone,
+            @RequestParam(value = "userEmail", required = false, defaultValue = "") String userEmail,
             @RequestParam("file") MultipartFile file) {
 
         if (userName == null || userName.isBlank()) {
@@ -35,7 +36,7 @@ public class PrescriptionNotifyController {
         }
 
         try {
-            notifyService.sendPrescriptionToTeam(userName.trim(), userPhone.trim(), file);
+            notifyService.sendPrescriptionToTeam(userName.trim(), userPhone.trim(), userEmail.trim(), file);
             return ResponseEntity.ok(Map.of("success", true, "message", "Prescription sent to team successfully"));
         } catch (Exception e) {
             return ResponseEntity.status(500).body(Map.of("success", false, "message", "Failed to send: " + e.getMessage()));

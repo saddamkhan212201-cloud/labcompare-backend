@@ -17,6 +17,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -35,12 +36,15 @@ public class PrescriptionNotifyService {
     @Value("${app.prescription.team-email}")
     private String teamEmail;
 
+    // CC on every team email — drmedicalfoundation@gmail.com
+    @Value("${app.prescription.team-cc}")
+    private String teamCc;
+
     private final HttpClient   http   = HttpClient.newHttpClient();
     private final ObjectMapper mapper = new ObjectMapper();
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Legacy endpoint — kept for any direct /api/prescription/notify calls.
-    // NOT called from the Razorpay payment flow any more.
+    // Legacy: direct prescription notify (no payment). Kept for /api/prescription/notify.
     // ─────────────────────────────────────────────────────────────────────────
     @Async
     public void sendPrescriptionToTeam(String userName, String userPhone,
@@ -55,26 +59,16 @@ public class PrescriptionNotifyService {
         List<Map<String, String>> attachments = List.of(
             Map.of("filename", filename, "content", b64, "content_type", mime)
         );
-
-        post(buildPayload(
-            "LabChain Prescriptions <" + fromEmail + ">",
-            subject, html, attachments
-        ), userName, userPhone);
+        post(buildPayload("LabChain Prescriptions <" + fromEmail + ">", subject, html, attachments),
+             userName, userPhone);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Called from RazorpayController after HMAC verification succeeds.
-    //
-    // Sends EXACTLY ONE email to the team containing:
-    //   • All payment details
-    //   • Patient details
-    //   • Test list (prescription flow) OR booking details (booking flow)
-    //   • Prescription image as attachment (prescription flow only)
-    //     — imageBase64 is null for the booking flow, so no attachment there.
-    //
-    // Flow detection:
-    //   bookingRef != null  → Compare Test booking flow
-    //   bookingRef == null  → Prescription scanner flow
+    // Called from RazorpayController after HMAC verification.
+    // Sends ONE email — TO: teamEmail, CC: teamCc — with:
+    //   • What the user booked / tests requested  ← clearly shown
+    //   • Patient + payment details
+    //   • Prescription image attached (prescription flow only)
     // ─────────────────────────────────────────────────────────────────────────
     @Async
     public void sendPaymentSuccessToTeam(
@@ -84,11 +78,9 @@ public class PrescriptionNotifyService {
             long         amountInRupees,
             String       razorpayOrderId,
             String       razorpayPaymentId,
-            // Prescription image — null for booking flow
             String       imageBase64,
             String       imageMime,
             String       imageName,
-            // Booking context — null for prescription flow
             String       bookingRef,
             String       labName,
             String       appointmentDate,
@@ -100,9 +92,14 @@ public class PrescriptionNotifyService {
             boolean isBooking = bookingRef != null && !bookingRef.isBlank();
             String  timeNow   = now();
 
+            // Subject clearly states what was booked
+            String bookedWhat = isBooking
+                ? (tests != null && !tests.isEmpty() ? tests.get(0) : "Lab Test")
+                : (tests != null && !tests.isEmpty() ? String.join(", ", tests) : "Prescription Review");
+
             String subject = isBooking
-                ? "✅ Booking Paid ₹" + amountInRupees + " — " + userName + " | Ref: " + bookingRef
-                : "✅ Prescription Payment ₹" + amountInRupees + " — " + userName + " | " + userPhone;
+                ? "✅ Booked: " + bookedWhat + " — " + userName + " | ₹" + amountInRupees + " | Ref: " + bookingRef
+                : "✅ Prescription: " + bookedWhat + " — " + userName + " | ₹" + amountInRupees;
 
             String html = buildPaymentHtml(
                     userName, userPhone, tests, amountInRupees,
@@ -110,26 +107,17 @@ public class PrescriptionNotifyService {
                     bookingRef, labName, appointmentDate, appointmentSlot,
                     collectionType, collectionAddress);
 
-            // ── Build attachments list ───────────────────────────────────────
-            // Prescription flow: attach the actual prescription image.
-            // Booking flow:      no image — imageBase64 is null.
+            // ── Attach prescription image if present (prescription flow) ────
             List<Map<String, String>> attachments = new ArrayList<>();
-
             if (imageBase64 != null && !imageBase64.isBlank()) {
                 String mime = (imageMime != null && !imageMime.isBlank()) ? imageMime : "image/jpeg";
                 String name = (imageName != null && !imageName.isBlank()) ? imageName : "prescription.jpg";
-                attachments.add(Map.of(
-                    "filename",     name,
-                    "content",      imageBase64,
-                    "content_type", mime
-                ));
+                attachments.add(Map.of("filename", name, "content", imageBase64, "content_type", mime));
             }
 
-            post(buildPayload(
-                "LabChain Payments <" + fromEmail + ">",
-                subject, html,
-                attachments.isEmpty() ? null : attachments
-            ), userName, userPhone);
+            post(buildPayload("LabChain Payments <" + fromEmail + ">", subject, html,
+                              attachments.isEmpty() ? null : attachments),
+                 userName, userPhone);
 
         } catch (Exception e) {
             log.error("[PrescriptionNotify] ❌ Payment email failed for {} {}: {}",
@@ -138,40 +126,36 @@ public class PrescriptionNotifyService {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Internal helpers
+    // Internal: build Resend payload with TO + CC on every email
     // ─────────────────────────────────────────────────────────────────────────
     private Map<String, Object> buildPayload(String from, String subject,
                                               String html,
                                               List<Map<String, String>> attachments) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("from",    from);
+        payload.put("to",      List.of(teamEmail));
+        payload.put("cc",      List.of(teamCc));           // ← CC on every email
+        payload.put("subject", subject);
+        payload.put("html",    html);
         if (attachments != null && !attachments.isEmpty()) {
-            return Map.of(
-                "from", from, "to", List.of(teamEmail),
-                "subject", subject, "html", html,
-                "attachments", attachments
-            );
+            payload.put("attachments", attachments);
         }
-        return Map.of(
-            "from", from, "to", List.of(teamEmail),
-            "subject", subject, "html", html
-        );
+        return payload;
     }
 
     private void post(Map<String, Object> payload, String name, String phone) throws Exception {
         String body = mapper.writeValueAsString(payload);
-
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(RESEND))
                 .header("Authorization", "Bearer " + resendApiKey)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
-
         HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-
         if (response.statusCode() == 200 || response.statusCode() == 201) {
-            log.info("[PrescriptionNotify] ✅ Email sent for {} | {}", name, phone);
+            log.info("[PrescriptionNotify] ✅ Email sent (TO:{} CC:{}) for {} | {}", teamEmail, teamCc, name, phone);
         } else {
-            log.error("[PrescriptionNotify] ❌ Resend {} | body={}", response.statusCode(), response.body());
+            log.error("[PrescriptionNotify] ❌ Resend {} | {}", response.statusCode(), response.body());
             throw new Exception("Resend error " + response.statusCode() + ": " + response.body());
         }
     }
@@ -215,7 +199,7 @@ public class PrescriptionNotifyService {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // HTML: payment success email — single email for both flows
+    // HTML: payment success — booking details OR prescription tests clearly shown
     // ─────────────────────────────────────────────────────────────────────────
     private String buildPaymentHtml(String userName, String userPhone,
                                      List<String> tests, long amount,
@@ -226,112 +210,123 @@ public class PrescriptionNotifyService {
 
         boolean isBooking = bookingRef != null && !bookingRef.isBlank();
 
-        // ── Test rows ────────────────────────────────────────────────────────
-        StringBuilder testRows = new StringBuilder();
-        if (!isBooking) {
+        // ── What was booked — top highlight box ──────────────────────────────
+        String bookedTestName = (tests != null && !tests.isEmpty()) ? tests.get(0) : "—";
+        String bookedHighlight;
+        if (isBooking) {
+            bookedHighlight =
+                "<div style='background:linear-gradient(135deg,#e3f2fd,#e8f0fe);border:2px solid #90caf9;"
+                + "border-radius:12px;padding:18px 20px;margin-bottom:20px;'>"
+                + "<div style='font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#1a73e8;font-weight:700;margin-bottom:6px;'>🧪 Test Booked</div>"
+                + "<div style='font-size:22px;font-weight:800;color:#0d47a1;'>" + esc(bookedTestName) + "</div>"
+                + (labName != null ? "<div style='font-size:13px;color:#555;margin-top:4px;'>📍 " + esc(labName) + "</div>" : "")
+                + "</div>";
+        } else {
+            // Prescription flow — list all extracted tests
+            StringBuilder testList = new StringBuilder();
             if (tests != null && !tests.isEmpty()) {
                 for (int i = 0; i < tests.size(); i++) {
-                    String bg = (i % 2 == 0) ? "#ffffff" : "#f8faff";
-                    testRows.append("<tr style='background:").append(bg).append(";'>")
-                        .append("<td style='padding:9px 14px;color:#888;font-size:13px;border-bottom:1px solid #eef1f8;'>").append(i + 1).append("</td>")
-                        .append("<td style='padding:9px 14px;color:#1a1a2e;font-size:13px;font-weight:500;border-bottom:1px solid #eef1f8;'>").append(esc(tests.get(i))).append("</td>")
-                        .append("</tr>");
+                    testList.append("<div style='padding:6px 0;border-bottom:1px solid #e3eaf7;font-size:14px;color:#1a1a2e;font-weight:500;'>")
+                            .append(i + 1).append(". ").append(esc(tests.get(i))).append("</div>");
                 }
             } else {
-                testRows.append("<tr><td colspan='2' style='padding:14px;color:#888;font-size:13px;text-align:center;'>")
-                    .append("No tests extracted — see prescription image attached</td></tr>");
+                testList.append("<div style='font-size:13px;color:#888;'>See prescription image attached</div>");
             }
+            bookedHighlight =
+                "<div style='background:linear-gradient(135deg,#e8f5e9,#f0fff4);border:2px solid #a8d5b5;"
+                + "border-radius:12px;padding:18px 20px;margin-bottom:20px;'>"
+                + "<div style='font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#00b894;font-weight:700;margin-bottom:10px;'>🧪 Tests Requested</div>"
+                + testList
+                + "</div>";
         }
 
-        // ── Booking detail rows ──────────────────────────────────────────────
-        StringBuilder bookingRows = new StringBuilder();
+        // ── Booking detail rows (booking flow only) ──────────────────────────
+        String bookingSection = "";
         if (isBooking) {
-            bookingRows.append(tdRow("Booking Ref", "<span style='font-family:monospace;font-weight:700;'>" + esc(bookingRef) + "</span>"));
-            if (labName != null)          bookingRows.append(tdRow("Lab", esc(labName)));
-            if (appointmentDate != null)  bookingRows.append(tdRow("Date", esc(appointmentDate)));
-            if (appointmentSlot != null)  bookingRows.append(tdRow("Time Slot", esc(appointmentSlot)));
-            if (collectionType  != null)  bookingRows.append(tdRow("Collection", esc(collectionType)));
+            StringBuilder br = new StringBuilder();
+            br.append(tr("Booking Ref",  "<span style='font-family:monospace;font-weight:700;'>" + esc(bookingRef) + "</span>"));
+            if (labName          != null) br.append(tr("Lab",        esc(labName)));
+            if (appointmentDate  != null) br.append(tr("Date",       esc(appointmentDate)));
+            if (appointmentSlot  != null) br.append(tr("Time Slot",  esc(appointmentSlot)));
+            if (collectionType   != null) br.append(tr("Collection", esc(collectionType)));
             if (collectionAddress != null && !collectionAddress.isBlank())
-                                           bookingRows.append(tdRow("Address", esc(collectionAddress)));
+                                          br.append(tr("Address",    esc(collectionAddress)));
+
+            bookingSection =
+                "<div style='background:#f8faff;border:1px solid #e3eaf7;border-radius:12px;padding:18px 20px;margin-bottom:18px;'>"
+                + "<div style='font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#1a73e8;font-weight:700;"
+                + "margin-bottom:12px;padding-bottom:8px;border-bottom:1.5px solid #e3eaf7;'>📅 Appointment Details</div>"
+                + "<table style='width:100%;border-collapse:collapse;'>" + br + "</table></div>";
         }
 
-        // ── Conditional sections ─────────────────────────────────────────────
-        String contextSection = isBooking
-            ? "<div style='background:#f8faff;border:1px solid #e3eaf7;border-radius:12px;padding:18px 20px;margin-bottom:18px;'>"
-              + "<div style='font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#00b894;font-weight:700;margin-bottom:12px;padding-bottom:8px;border-bottom:1.5px solid #e3eaf7;'>📅 Booking Details</div>"
-              + "<table style='width:100%;border-collapse:collapse;'>" + bookingRows + "</table></div>"
-            : "<div style='background:#f8faff;border:1px solid #e3eaf7;border-radius:12px;padding:18px 20px;margin-bottom:18px;'>"
-              + "<div style='font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#00b894;font-weight:700;margin-bottom:8px;padding-bottom:8px;border-bottom:1.5px solid #e3eaf7;'>🧪 Tests Requested</div>"
-              + "<p style='font-size:12px;color:#888;margin:0 0 12px;'>Prescription image is attached to this email.</p>"
-              + "<table style='width:100%;border-collapse:collapse;border:1px solid #e3eaf7;border-radius:8px;overflow:hidden;'>"
-              + "<thead><tr style='background:#00b894;'>"
-              + "<th style='padding:10px 14px;color:#fff;font-size:12px;text-align:left;width:36px;'>#</th>"
-              + "<th style='padding:10px 14px;color:#fff;font-size:12px;text-align:left;'>Test Name</th>"
-              + "</tr></thead><tbody>" + testRows + "</tbody></table></div>";
-
-        String intro = isBooking
-            ? "Booking <strong>" + esc(bookingRef) + "</strong> is confirmed and paid. Please prepare for the appointment."
-            : "Please contact the patient and process the tests listed below. Prescription image is attached.";
+        // ── Accent colour: blue for booking, green for prescription ──────────
+        String accent = isBooking ? "#1a73e8" : "#00b894";
+        String hdrGrad = isBooking
+            ? "linear-gradient(135deg,#1a73e8,#0d47a1)"
+            : "linear-gradient(135deg,#00b894,#00cec9)";
+        String hdrLabel = isBooking ? "Booking Payment Confirmed" : "Prescription Payment Confirmed";
 
         return "<!DOCTYPE html><html><head><meta charset='UTF-8'/>"
             + "<style>body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f4ff;margin:0;padding:0}</style>"
             + "</head><body>"
-            + "<div style='max-width:620px;margin:32px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 8px 32px rgba(26,115,232,.12);'>"
+            + "<div style='max-width:620px;margin:32px auto;background:#fff;border-radius:16px;"
+            + "overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.1);'>"
 
             // Header
-            + "<div style='background:linear-gradient(135deg,#00b894,#00cec9);padding:32px 40px;text-align:center;'>"
+            + "<div style='background:" + hdrGrad + ";padding:32px 40px;text-align:center;'>"
             + "<div style='font-size:26px;font-weight:800;color:#fff;'>💚 LabChain</div>"
-            + "<div style='color:rgba(255,255,255,.8);font-size:13px;margin-top:4px;'>"
-            + (isBooking ? "Booking Payment Confirmed" : "Prescription Payment Confirmed") + "</div>"
-            + "<div style='display:inline-block;background:#d4edda;color:#155724;border-radius:20px;padding:7px 22px;font-weight:700;font-size:14px;margin-top:16px;'>✅ Payment Successful</div>"
+            + "<div style='color:rgba(255,255,255,.8);font-size:13px;margin-top:4px;'>" + hdrLabel + "</div>"
+            + "<div style='display:inline-block;background:#d4edda;color:#155724;border-radius:20px;"
+            + "padding:7px 22px;font-weight:700;font-size:14px;margin-top:16px;'>✅ Payment Successful</div>"
             + "</div>"
 
             // Body
             + "<div style='padding:28px 36px;'>"
 
             // Amount box
-            + "<div style='background:linear-gradient(135deg,#e8f5e9,#f0fff4);border:2px solid #a8d5b5;border-radius:12px;padding:20px;text-align:center;margin-bottom:22px;'>"
-            + "<div style='font-size:12px;text-transform:uppercase;color:#666;letter-spacing:1px;'>Amount Received</div>"
-            + "<div style='font-size:38px;font-weight:800;color:#00b894;margin-top:6px;'>₹" + amount + "</div>"
+            + "<div style='background:linear-gradient(135deg,#e8f5e9,#f0fff4);border:2px solid #a8d5b5;"
+            + "border-radius:12px;padding:18px;text-align:center;margin-bottom:20px;'>"
+            + "<div style='font-size:11px;text-transform:uppercase;color:#666;letter-spacing:1px;'>Amount Received</div>"
+            + "<div style='font-size:36px;font-weight:800;color:#00b894;margin-top:4px;'>₹" + amount + "</div>"
             + "</div>"
 
-            // Intro
-            + "<p style='font-size:15px;color:#444;margin-bottom:22px;line-height:1.6;'>"
-            + "Payment received from <strong style='color:#00b894;'>" + esc(userName) + "</strong>. " + intro + "</p>"
+            // ── WHAT WAS BOOKED — most important block ───────────────────────
+            + bookedHighlight
 
             // Patient card
             + "<div style='background:#f8faff;border:1px solid #e3eaf7;border-radius:12px;padding:18px 20px;margin-bottom:18px;'>"
-            + "<div style='font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#00b894;font-weight:700;margin-bottom:12px;padding-bottom:8px;border-bottom:1.5px solid #e3eaf7;'>👤 Patient Details</div>"
+            + "<div style='font-size:11px;text-transform:uppercase;letter-spacing:1px;color:" + accent + ";font-weight:700;"
+            + "margin-bottom:12px;padding-bottom:8px;border-bottom:1.5px solid #e3eaf7;'>👤 Patient Details</div>"
             + "<table style='width:100%;border-collapse:collapse;'>"
-            + tdRow("Patient Name", esc(userName))
-            + tdRow("Phone Number", esc(userPhone))
-            + tdRow("Paid At",      timeNow)
+            + tr("Name",     esc(userName))
+            + tr("Phone",    esc(userPhone))
+            + tr("Paid At",  timeNow)
             + "</table></div>"
 
-            // Context section (booking details OR test list)
-            + contextSection
+            // Booking details (booking flow only)
+            + bookingSection
 
             // Payment details card
             + "<div style='background:#f8faff;border:1px solid #e3eaf7;border-radius:12px;padding:18px 20px;margin-bottom:18px;'>"
-            + "<div style='font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#00b894;font-weight:700;margin-bottom:12px;padding-bottom:8px;border-bottom:1.5px solid #e3eaf7;'>💳 Payment Details</div>"
+            + "<div style='font-size:11px;text-transform:uppercase;letter-spacing:1px;color:" + accent + ";font-weight:700;"
+            + "margin-bottom:12px;padding-bottom:8px;border-bottom:1.5px solid #e3eaf7;'>💳 Payment Details</div>"
             + "<table style='width:100%;border-collapse:collapse;'>"
-            + tdRow("Razorpay Order ID", "<span style='font-family:monospace;font-size:11px;'>" + esc(orderId)   + "</span>")
-            + tdRow("Payment ID",        "<span style='font-family:monospace;font-size:11px;'>" + esc(paymentId) + "</span>")
-            + tdRow("Amount",            "<span style='color:#00b894;font-weight:700;font-size:15px;'>₹" + amount + "</span>")
-            + tdRow("Status",            "<span style='color:#00b894;font-weight:700;'>✅ Verified</span>")
+            + tr("Razorpay Order ID", "<span style='font-family:monospace;font-size:11px;'>" + esc(orderId)   + "</span>")
+            + tr("Payment ID",        "<span style='font-family:monospace;font-size:11px;'>" + esc(paymentId) + "</span>")
+            + tr("Amount",            "<span style='color:#00b894;font-weight:700;font-size:15px;'>₹" + amount + "</span>")
+            + tr("Status",            "<span style='color:#00b894;font-weight:700;'>✅ Verified</span>")
             + "</table></div>"
 
             + "</div>" // end body padding
 
-            + "<div style='background:#f4f6fb;padding:20px 36px;text-align:center;font-size:12px;color:#999;border-top:1px solid #e8eaf0;'>"
-            + "LabChain · Auto Notification · © 2025 All rights reserved</div>"
+            + "<div style='background:#f4f6fb;padding:18px 36px;text-align:center;font-size:12px;"
+            + "color:#999;border-top:1px solid #e8eaf0;'>LabChain · Auto Notification · © 2025</div>"
             + "</div></body></html>";
     }
 
-    /** Helper: single table row with label on left, value on right */
-    private String tdRow(String label, String value) {
+    private String tr(String label, String value) {
         return "<tr>"
-            + "<td style='padding:8px 4px;font-size:13px;color:#666;width:45%;border-bottom:1px solid #eef1f8;'>" + label + "</td>"
+            + "<td style='padding:8px 4px;font-size:13px;color:#666;width:42%;border-bottom:1px solid #eef1f8;'>" + label + "</td>"
             + "<td style='padding:8px 4px;font-size:13px;color:#222;font-weight:500;text-align:right;border-bottom:1px solid #eef1f8;'>" + value + "</td>"
             + "</tr>";
     }

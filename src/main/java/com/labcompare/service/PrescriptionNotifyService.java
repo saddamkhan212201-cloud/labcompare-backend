@@ -239,8 +239,8 @@ public class PrescriptionNotifyService {
             "<div class='bdy'>" +
             "<p style='font-size:15px;color:#444;margin-bottom:20px'>A new prescription has been submitted. Please review and contact the patient.</p>" +
             "<div class='card'><div class='ct'>Patient Details</div>" +
-            "<div class='row'><span>Name</span><span>" + esc(userName) + "</span></div>" +
-            "<div class='row'><span>Phone</span><span>" + esc(userPhone) + "</span></div>" +
+            "<div class='row'><span>Name</span><span>"    + esc(userName) + "</span></div>" +
+            "<div class='row'><span>Phone</span><span>"   + esc(userPhone) + "</span></div>" +
             "<div class='row'><span>Submitted At</span><span>" + timeNow + "</span></div></div>" +
             "<div class='note'>📎 The prescription image is attached to this email.<br/>Please call <strong>" + esc(userPhone) + "</strong> to assist the patient.</div>" +
             "</div><div class='ftr'>LabChain Prescription System · Auto Notification</div></div></body></html>";

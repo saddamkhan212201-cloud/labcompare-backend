@@ -278,23 +278,23 @@ public class PrescriptionNotifyService {
         String bookingSection = "";
         if (isBookingFlow) {
             StringBuilder br = new StringBuilder();
-            br.append("<tr><td style='padding:8px 4px;font-size:13px;color:#666;width:45%;border-bottom:1px solid #eef1f8;'>Booking Ref</td>")
-              .append("<td style='padding:8px 4px;font-size:13px;color:#222;font-weight:700;text-align:right;border-bottom:1px solid #eef1f8;font-family:monospace;'>").append(esc(bookingRef)).append("</td></tr>");
+            br.append("<tr><td style='padding:8px 12px;font-size:13px;color:#666;width:45%;border-bottom:1px solid #eef1f8;'>Booking Ref</td>")
+              .append("<td style='padding:8px 12px;font-size:13px;color:#222;font-weight:700;text-align:right;border-bottom:1px solid #eef1f8;font-family:monospace;'>").append(esc(bookingRef)).append("</td></tr>");
             if (labName != null)
-                br.append("<tr><td style='padding:8px 4px;font-size:13px;color:#666;border-bottom:1px solid #eef1f8;'>Lab</td>")
-                  .append("<td style='padding:8px 4px;font-size:13px;color:#222;font-weight:500;text-align:right;border-bottom:1px solid #eef1f8;'>").append(esc(labName)).append("</td></tr>");
+                br.append("<tr><td style='padding:8px 12px;font-size:13px;color:#666;border-bottom:1px solid #eef1f8;'>Lab</td>")
+                  .append("<td style='padding:8px 12px;font-size:13px;color:#222;font-weight:500;text-align:right;border-bottom:1px solid #eef1f8;'>").append(esc(labName)).append("</td></tr>");
             if (appointmentDate != null)
-                br.append("<tr><td style='padding:8px 4px;font-size:13px;color:#666;border-bottom:1px solid #eef1f8;'>Date</td>")
-                  .append("<td style='padding:8px 4px;font-size:13px;color:#222;font-weight:500;text-align:right;border-bottom:1px solid #eef1f8;'>").append(esc(appointmentDate)).append("</td></tr>");
+                br.append("<tr><td style='padding:8px 12px;font-size:13px;color:#666;border-bottom:1px solid #eef1f8;'>Date</td>")
+                  .append("<td style='padding:8px 12px;font-size:13px;color:#222;font-weight:500;text-align:right;border-bottom:1px solid #eef1f8;'>").append(esc(appointmentDate)).append("</td></tr>");
             if (appointmentSlot != null)
-                br.append("<tr><td style='padding:8px 4px;font-size:13px;color:#666;border-bottom:1px solid #eef1f8;'>Slot</td>")
-                  .append("<td style='padding:8px 4px;font-size:13px;color:#222;font-weight:500;text-align:right;border-bottom:1px solid #eef1f8;'>").append(esc(appointmentSlot)).append("</td></tr>");
+                br.append("<tr><td style='padding:8px 12px;font-size:13px;color:#666;border-bottom:1px solid #eef1f8;'>Slot</td>")
+                  .append("<td style='padding:8px 12px;font-size:13px;color:#222;font-weight:500;text-align:right;border-bottom:1px solid #eef1f8;'>").append(esc(appointmentSlot)).append("</td></tr>");
             if (collectionType != null)
-                br.append("<tr><td style='padding:8px 4px;font-size:13px;color:#666;border-bottom:1px solid #eef1f8;'>Collection</td>")
-                  .append("<td style='padding:8px 4px;font-size:13px;color:#222;font-weight:500;text-align:right;border-bottom:1px solid #eef1f8;'>").append(esc(collectionType)).append("</td></tr>");
+                br.append("<tr><td style='padding:8px 12px;font-size:13px;color:#666;border-bottom:1px solid #eef1f8;'>Collection</td>")
+                  .append("<td style='padding:8px 12px;font-size:13px;color:#222;font-weight:500;text-align:right;border-bottom:1px solid #eef1f8;'>").append(esc(collectionType)).append("</td></tr>");
             if (collectionAddress != null && !collectionAddress.isBlank())
-                br.append("<tr><td style='padding:8px 4px;font-size:13px;color:#666;'>Address</td>")
-                  .append("<td style='padding:8px 4px;font-size:13px;color:#222;font-weight:500;text-align:right;'>").append(esc(collectionAddress)).append("</td></tr>");
+                br.append("<tr><td style='padding:8px 12px;font-size:13px;color:#666;'>Address</td>")
+                  .append("<td style='padding:8px 12px;font-size:13px;color:#222;font-weight:500;text-align:right;'>").append(esc(collectionAddress)).append("</td></tr>");
 
             bookingSection = "<div style='background:#f8faff;border:1px solid #e3eaf7;border-radius:12px;padding:18px 20px;margin-bottom:18px;'>"
                 + "<div style='font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#00b894;font-weight:700;margin-bottom:12px;padding-bottom:8px;border-bottom:1.5px solid #e3eaf7;'>📅 Booking Details</div>"
@@ -334,12 +334,12 @@ public class PrescriptionNotifyService {
             + "<div style='background:#f8faff;border:1px solid #e3eaf7;border-radius:12px;padding:18px 20px;margin-bottom:18px;'>"
             + "<div style='font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#00b894;font-weight:700;margin-bottom:12px;padding-bottom:8px;border-bottom:1.5px solid #e3eaf7;'>👤 Patient Details</div>"
             + "<table style='width:100%;border-collapse:collapse;'>"
-            + "<tr><td style='padding:8px 4px;font-size:13px;color:#666;width:45%;border-bottom:1px solid #eef1f8;'>Patient Name</td>"
-            +     "<td style='padding:8px 4px;font-size:13px;color:#222;font-weight:500;text-align:right;border-bottom:1px solid #eef1f8;'>" + esc(userName) + "</td></tr>"
-            + "<tr><td style='padding:8px 4px;font-size:13px;color:#666;border-bottom:1px solid #eef1f8;'>Phone Number</td>"
-            +     "<td style='padding:8px 4px;font-size:13px;color:#222;font-weight:500;text-align:right;border-bottom:1px solid #eef1f8;'>" + esc(userPhone) + "</td></tr>"
-            + "<tr><td style='padding:8px 4px;font-size:13px;color:#666;'>Paid At</td>"
-            +     "<td style='padding:8px 4px;font-size:13px;color:#222;font-weight:500;text-align:right;'>" + timeNow + "</td></tr>"
+            + "<tr><td style='padding:8px 12px;font-size:13px;color:#666;width:45%;border-bottom:1px solid #eef1f8;'>Patient Name</td>"
+            +     "<td style='padding:8px 12px;font-size:13px;color:#222;font-weight:500;text-align:right;border-bottom:1px solid #eef1f8;'>" + esc(userName) + "</td></tr>"
+            + "<tr><td style='padding:8px 12px;font-size:13px;color:#666;border-bottom:1px solid #eef1f8;'>Phone Number</td>"
+            +     "<td style='padding:8px 12px;font-size:13px;color:#222;font-weight:500;text-align:right;border-bottom:1px solid #eef1f8;'>" + esc(userPhone) + "</td></tr>"
+            + "<tr><td style='padding:8px 12px;font-size:13px;color:#666;'>Paid At</td>"
+            +     "<td style='padding:8px 12px;font-size:13px;color:#222;font-weight:500;text-align:right;'>" + timeNow + "</td></tr>"
             + "</table></div>"
 
             // booking details (only for booking flow)
@@ -349,14 +349,14 @@ public class PrescriptionNotifyService {
             + "<div style='background:#f8faff;border:1px solid #e3eaf7;border-radius:12px;padding:18px 20px;margin-bottom:18px;'>"
             + "<div style='font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#00b894;font-weight:700;margin-bottom:12px;padding-bottom:8px;border-bottom:1.5px solid #e3eaf7;'>💳 Payment Details</div>"
             + "<table style='width:100%;border-collapse:collapse;'>"
-            + "<tr><td style='padding:8px 4px;font-size:13px;color:#666;width:45%;border-bottom:1px solid #eef1f8;'>Razorpay Order ID</td>"
-            +     "<td style='padding:8px 4px;font-size:11px;color:#555;font-family:monospace;text-align:right;border-bottom:1px solid #eef1f8;'>" + esc(orderId) + "</td></tr>"
-            + "<tr><td style='padding:8px 4px;font-size:13px;color:#666;border-bottom:1px solid #eef1f8;'>Payment ID</td>"
-            +     "<td style='padding:8px 4px;font-size:11px;color:#555;font-family:monospace;text-align:right;border-bottom:1px solid #eef1f8;'>" + esc(paymentId) + "</td></tr>"
-            + "<tr><td style='padding:8px 4px;font-size:13px;color:#666;border-bottom:1px solid #eef1f8;'>Amount</td>"
-            +     "<td style='padding:8px 4px;font-size:16px;color:#00b894;font-weight:700;text-align:right;border-bottom:1px solid #eef1f8;'>₹" + amount + "</td></tr>"
-            + "<tr><td style='padding:8px 4px;font-size:13px;color:#666;'>Status</td>"
-            +     "<td style='padding:8px 4px;font-size:13px;color:#00b894;font-weight:700;text-align:right;'>✅ Verified</td></tr>"
+            + "<tr><td style='padding:8px 12px;font-size:13px;color:#666;width:45%;border-bottom:1px solid #eef1f8;'>Razorpay Order ID</td>"
+            +     "<td style='padding:8px 12px;font-size:11px;color:#555;font-family:monospace;text-align:right;border-bottom:1px solid #eef1f8;'>" + esc(orderId) + "</td></tr>"
+            + "<tr><td style='padding:8px 12px;font-size:13px;color:#666;border-bottom:1px solid #eef1f8;'>Payment ID</td>"
+            +     "<td style='padding:8px 12px;font-size:11px;color:#555;font-family:monospace;text-align:right;border-bottom:1px solid #eef1f8;'>" + esc(paymentId) + "</td></tr>"
+            + "<tr><td style='padding:8px 12px;font-size:13px;color:#666;border-bottom:1px solid #eef1f8;'>Amount</td>"
+            +     "<td style='padding:8px 12px;font-size:16px;color:#00b894;font-weight:700;text-align:right;border-bottom:1px solid #eef1f8;'>₹" + amount + "</td></tr>"
+            + "<tr><td style='padding:8px 12px;font-size:13px;color:#666;'>Status</td>"
+            +     "<td style='padding:8px 12px;font-size:13px;color:#00b894;font-weight:700;text-align:right;'>✅ Verified</td></tr>"
             + "</table></div>"
 
             // test list card

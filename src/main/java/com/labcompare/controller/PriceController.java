@@ -35,9 +35,17 @@ public class PriceController {
         return ResponseEntity.ok(ApiResponse.ok(priceService.getAllPrices()));
     }
 
+    // Create (or upsert same lab+test)
     @PostMapping
     public ResponseEntity<ApiResponse<PriceDTO>> setPrice(@Valid @RequestBody PriceRequest req) {
         return ResponseEntity.ok(ApiResponse.ok("Price saved", priceService.setPrice(req)));
+    }
+
+    // FIX 1: Update existing price by ID
+    @PutMapping("/{id}")
+    public ResponseEntity<ApiResponse<PriceDTO>> updatePrice(
+            @PathVariable Long id, @RequestBody PriceRequest req) {
+        return ResponseEntity.ok(ApiResponse.ok("Price updated", priceService.updatePrice(id, req)));
     }
 
     @DeleteMapping("/{id}")

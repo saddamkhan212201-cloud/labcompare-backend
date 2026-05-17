@@ -34,26 +34,44 @@ public class TestService {
 
     public TestDTO getTestById(Long id) { return toDTO(findById(id)); }
 
+    // FIX 4: Duplicate prevention on create — reject if same name already exists (case-insensitive)
     public TestDTO createTest(TestRequest req) {
+        testRepository.findByNameIgnoreCase(req.getName().trim()).ifPresent(existing -> {
+            throw new IllegalArgumentException(
+                "A test named \"" + existing.getName() + "\" already exists (Category: " + existing.getCategory() + ")");
+        });
         Test test = new Test();
-        test.setName(req.getName());
-        test.setCategory(req.getCategory());
-        test.setDescription(req.getDescription());
+        test.setName(req.getName().trim());
+        test.setCategory(req.getCategory().trim());
+        test.setDescription(req.getDescription() != null ? req.getDescription().trim() : "");
         return toDTO(testRepository.save(test));
     }
 
+    // FIX 4: Duplicate prevention on update — reject if name clashes with a DIFFERENT test
     public TestDTO updateTest(Long id, TestRequest req) {
         Test test = findById(id);
-        if (req.getName() != null) test.setName(req.getName());
-        if (req.getCategory() != null) test.setCategory(req.getCategory());
-        if (req.getDescription() != null) test.setDescription(req.getDescription());
+        if (req.getName() != null && !req.getName().isBlank()) {
+            String newName = req.getName().trim();
+            testRepository.findByNameIgnoreCase(newName).ifPresent(existing -> {
+                if (!existing.getId().equals(id)) {
+                    throw new IllegalArgumentException(
+                        "A test named \"" + existing.getName() + "\" already exists (Category: " + existing.getCategory() + ")");
+                }
+            });
+            test.setName(newName);
+        }
+        if (req.getCategory() != null && !req.getCategory().isBlank())
+            test.setCategory(req.getCategory().trim());
+        if (req.getDescription() != null)
+            test.setDescription(req.getDescription().trim());
         return toDTO(testRepository.save(test));
     }
 
     public void deleteTest(Long id) { testRepository.deleteById(id); }
 
     private Test findById(Long id) {
-        return testRepository.findById(id).orElseThrow(() -> new EntityNotFoundException("Test not found: " + id));
+        return testRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Test not found: " + id));
     }
 
     public TestDTO toDTO(Test test) {

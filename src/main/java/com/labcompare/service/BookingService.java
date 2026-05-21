@@ -19,25 +19,27 @@ public class BookingService {
     private final TestRepository          testRepository;
     private final LabTestPriceRepository  priceRepository;
     private final EmailService            emailService;
+    private final PrescriptionNotifyService notifyService;
 
     public BookingService(BookingRepository bookingRepository, LabRepository labRepository,
                           TestRepository testRepository, LabTestPriceRepository priceRepository,
-                          EmailService emailService) {
+                          EmailService emailService, PrescriptionNotifyService notifyService) {
         this.bookingRepository = bookingRepository;
         this.labRepository     = labRepository;
         this.testRepository    = testRepository;
         this.priceRepository   = priceRepository;
         this.emailService      = emailService;
+        this.notifyService     = notifyService;
     }
 
     /**
      * Creates and persists the booking record.
      *
-     * NOTE: No email is sent here intentionally.
-     * The confirmation email is sent ONLY after Razorpay payment is verified,
+     * For ONLINE payment (UPI/CARD): email fires ONLY after Razorpay payment is verified,
      * via RazorpayController → PrescriptionNotifyService.sendPaymentSuccessToTeam().
-     * For CASH bookings the frontend should call /api/razorpay/confirm-cash-booking
-     * or you can re-enable the email below only for CASH if needed.
+     *
+     * For CASH (pay at lab): email is sent immediately to both user and team,
+     * since there is no online payment verification step.
      */
     public BookingDTO createBooking(BookingRequest req) {
         Lab lab   = labRepository.findById(req.getLabId())
@@ -69,9 +71,34 @@ public class BookingService {
         booking.setPaymentMethod(req.getPaymentMethod());
         booking.setStatus(Booking.BookingStatus.CONFIRMED);
 
-        // ── Save and return DTO ──────────────────────────────────────────────
-        // EMAIL IS NOT SENT HERE — it fires after payment verification only.
-        return toDTO(bookingRepository.save(booking));
+        BookingDTO dto = toDTO(bookingRepository.save(booking));
+
+        // ── For CASH bookings: send emails immediately (no Razorpay step) ──
+        if (req.getPaymentMethod() == Booking.PaymentMethod.CASH) {
+            // 1. Confirmation email to patient (with QR code)
+            try { emailService.sendBookingConfirmation(dto); } catch (Exception ignored) {}
+
+            // 2. Team notification email (same rich email as online payment)
+            try {
+                notifyService.sendPaymentSuccessToTeam(
+                    req.getPatientName(),
+                    req.getPhone(),
+                    req.getEmail(),
+                    List.of(test.getName()),
+                    Math.round(testPrice + collectionFee),
+                    "CASH-" + ref,   // no real order id for cash
+                    "PAY-AT-LAB",    // no real payment id for cash
+                    ref,
+                    lab.getName(),
+                    req.getAppointmentDate() != null ? req.getAppointmentDate().toString() : null,
+                    req.getAppointmentSlot(),
+                    req.getCollectionType().name(),
+                    req.getCollectionAddress()
+                );
+            } catch (Exception ignored) {}
+        }
+
+        return dto;
     }
 
     public BookingDTO getByRef(String ref) {

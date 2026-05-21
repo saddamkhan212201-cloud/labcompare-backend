@@ -2,10 +2,12 @@ package com.labcompare.controller;
 
 import com.labcompare.dto.*;
 import com.labcompare.service.BookingService;
+import com.labcompare.service.PrescriptionNotifyService;
 import com.labcompare.service.QRCodeService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 import java.util.List;
 import java.util.Map;
 
@@ -14,12 +16,16 @@ import java.util.Map;
 @CrossOrigin(origins = "*")
 public class BookingController {
 
-    private final BookingService bookingService;
-    private final QRCodeService qrCodeService;
+    private final BookingService            bookingService;
+    private final QRCodeService             qrCodeService;
+    private final PrescriptionNotifyService notifyService;
 
-    public BookingController(BookingService bookingService, QRCodeService qrCodeService) {
+    public BookingController(BookingService bookingService,
+                             QRCodeService qrCodeService,
+                             PrescriptionNotifyService notifyService) {
         this.bookingService = bookingService;
-        this.qrCodeService = qrCodeService;
+        this.qrCodeService  = qrCodeService;
+        this.notifyService  = notifyService;
     }
 
     @PostMapping
@@ -48,5 +54,46 @@ public class BookingController {
     @PatchMapping("/{ref}/cancel")
     public ResponseEntity<ApiResponse<BookingDTO>> cancel(@PathVariable String ref) {
         return ResponseEntity.ok(ApiResponse.ok("Booking cancelled", bookingService.cancelBooking(ref)));
+    }
+
+    /**
+     * Called by the frontend ONCE after ALL cart items are booked (CASH flow only).
+     * Sends one combined email to the patient + team regardless of cart size.
+     *
+     * This is intentionally separate from /api/razorpay/verify-payment so that
+     * cash bookings never touch HMAC signature verification.
+     */
+    @PostMapping("/cash-notify")
+    public ResponseEntity<?> cashNotify(@RequestBody Map<String, Object> req) {
+        try {
+            String userName         = (String) req.get("userName");
+            String userPhone        = (String) req.get("userPhone");
+            String userEmail        = (String) req.get("userEmail");
+            String bookingRefs      = (String) req.get("bookingRefs");
+            String labNames         = (String) req.get("labNames");
+            String appointmentDate  = (String) req.get("appointmentDate");
+            String appointmentSlot  = (String) req.get("appointmentSlot");
+            String collectionType   = (String) req.get("collectionType");
+            String collectionAddress = (String) req.get("collectionAddress");
+            long   amount           = req.get("amount") != null ? ((Number) req.get("amount")).longValue() : 0L;
+
+            @SuppressWarnings("unchecked")
+            List<String> tests = (List<String>) req.get("tests");
+
+            notifyService.sendPaymentSuccessToTeam(
+                userName, userPhone, userEmail,
+                tests, amount,
+                "CASH-ORDER",   // orderId placeholder
+                "PAY-AT-LAB",   // paymentId placeholder
+                bookingRefs, labNames,
+                appointmentDate, appointmentSlot,
+                collectionType, collectionAddress
+            );
+
+            return ResponseEntity.ok(Map.of("success", true, "message", "Notification sent"));
+        } catch (Exception e) {
+            // Never fail the response — email issues should not surface to the user
+            return ResponseEntity.ok(Map.of("success", false, "message", e.getMessage()));
+        }
     }
 }

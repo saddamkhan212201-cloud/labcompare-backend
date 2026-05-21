@@ -51,7 +51,7 @@ public class AuthController {
         this.jwtUtil         = jwtUtil;
     }
 
-    // ─── Existing endpoints — completely unchanged ─────────────────────────
+    // ─── Login ────────────────────────────────────────────────────────────
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<LoginResponse>> login(@RequestBody LoginRequest req) {
@@ -64,16 +64,29 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.ok("Login successful", resp));
     }
 
+    // ─── Register (saves email) ───────────────────────────────────────────
+
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<String>> register(@RequestBody LoginRequest req) {
         if (userRepository.existsByUsername(req.getUsername()))
             return ResponseEntity.badRequest().body(ApiResponse.error("Username already exists"));
+
+        // If email provided, make sure it isn't already in use
+        if (req.getEmail() != null && !req.getEmail().isBlank()) {
+            boolean emailTaken = userRepository.findByEmail(req.getEmail().trim().toLowerCase()).isPresent();
+            if (emailTaken)
+                return ResponseEntity.badRequest().body(ApiResponse.error("An account with this email already exists"));
+        }
+
         User user = new User(req.getUsername(), passwordEncoder.encode(req.getPassword()), User.Role.USER);
+        if (req.getEmail() != null && !req.getEmail().isBlank())
+            user.setEmail(req.getEmail());
+
         userRepository.save(user);
         return ResponseEntity.ok(ApiResponse.ok("Registration successful", "USER"));
     }
 
-    // ─── New: Forgot password Step 1 — generate OTP and email it ──────────
+    // ─── Forgot Password — Step 1: generate OTP and email it ──────────────
 
     @PostMapping("/forgot-password")
     public ResponseEntity<ApiResponse<String>> forgotPassword(@RequestBody Map<String, String> req) {
@@ -106,7 +119,7 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.ok("OTP sent to your email. It expires in 10 minutes.", null));
     }
 
-    // ─── New: Forgot password Step 2 — verify OTP and set new password ─────
+    // ─── Forgot Password — Step 2: verify OTP and set new password ────────
 
     @PostMapping("/reset-password")
     public ResponseEntity<ApiResponse<String>> resetPassword(@RequestBody Map<String, String> req) {
@@ -125,7 +138,7 @@ public class AuthController {
         if (user == null || !user.isOtpValid(otp.trim()))
             return ResponseEntity.badRequest().body(ApiResponse.error("Invalid or expired OTP. Please request a new one."));
 
-        // Update password and clear OTP
+        // Update password and clear OTP fields
         user.setPassword(passwordEncoder.encode(newPassword));
         user.setResetOtp(null);
         user.setResetOtpExpiresAt(null);

@@ -4,8 +4,12 @@ import com.labcompare.dto.*;
 import com.labcompare.service.BookingService;
 import com.labcompare.service.PrescriptionNotifyService;
 import com.labcompare.service.QRCodeService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -46,9 +50,32 @@ public class BookingController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<BookingDTO>>> getAll(@RequestParam(required = false) String phone) {
-        if (phone != null) return ResponseEntity.ok(ApiResponse.ok(bookingService.getByPhone(phone)));
-        return ResponseEntity.ok(ApiResponse.ok(bookingService.getAllBookings()));
+    public ResponseEntity<ApiResponse<List<BookingDTO>>> getAll(
+            @RequestParam(required = false) String phone,
+            HttpServletRequest request) {
+
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        boolean isAdminOrSuper = auth != null && (
+            auth.getAuthorities().contains(new SimpleGrantedAuthority("ROLE_ADMIN")) ||
+            auth.getAuthorities().contains(new SimpleGrantedAuthority("ROLE_SUPERADMIN"))
+        );
+
+        if (isAdminOrSuper) {
+            // Admin / SuperAdmin: can query any phone or get all bookings
+            if (phone != null)
+                return ResponseEntity.ok(ApiResponse.ok(bookingService.getByPhone(phone)));
+            return ResponseEntity.ok(ApiResponse.ok(bookingService.getAllBookings()));
+        }
+
+        // ── Regular USER: can ONLY see their own bookings ──────────────────
+        // Phone is extracted from their JWT (stored at registration) — cannot be spoofed
+        String userPhone = (String) request.getAttribute("userPhone");
+        if (userPhone == null || userPhone.isBlank())
+            return ResponseEntity.status(403).body(
+                ApiResponse.error("Your account has no phone number linked. Please contact support."));
+
+        // Ignore any phone param from the request — always use the JWT phone
+        return ResponseEntity.ok(ApiResponse.ok(bookingService.getByPhone(userPhone)));
     }
 
     @PatchMapping("/{ref}/cancel")

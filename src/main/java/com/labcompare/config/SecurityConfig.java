@@ -40,9 +40,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/bookings/*/qr").authenticated()
                 .requestMatchers(HttpMethod.GET, "/api/bookings/*").authenticated()
                 .requestMatchers(HttpMethod.PATCH, "/api/bookings/*/cancel").authenticated()
-                // All bookings list: ADMIN or SUPERADMIN
+                // All bookings list: must be authenticated (controller enforces USER vs ADMIN scope)
                 .requestMatchers(HttpMethod.GET, "/api/bookings").authenticated()
-              //  .requestMatchers(HttpMethod.GET, "/api/bookings").hasAnyRole("ADMIN", "SUPERADMIN")
                 // Admin-only write operations — ADMIN or SUPERADMIN
                 .requestMatchers(HttpMethod.POST, "/api/labs/**").hasAnyRole("ADMIN", "SUPERADMIN")
                 .requestMatchers(HttpMethod.PUT, "/api/labs/**").hasAnyRole("ADMIN", "SUPERADMIN")

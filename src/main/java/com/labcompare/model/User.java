@@ -32,6 +32,10 @@ public class User {
     @Column(name = "email")
     private String email;
 
+    // Phone — used to auto-load bookings for regular users (no spoofing possible)
+    @Column(name = "phone")
+    private String phone;
+
     // OTP fields — stored temporarily during password reset (cleared after use)
     @Column(name = "reset_otp")
     private String resetOtp;
@@ -70,6 +74,8 @@ public class User {
     // New getters/setters for forgot password
     public String getEmail()                         { return email; }
     public void setEmail(String email)               { this.email = email; }
+    public String getPhone()                         { return phone; }
+    public void setPhone(String phone)               { this.phone = phone; }
     public String getResetOtp()                      { return resetOtp; }
     public void setResetOtp(String resetOtp)         { this.resetOtp = resetOtp; }
     public LocalDateTime getResetOtpExpiresAt()      { return resetOtpExpiresAt; }

@@ -21,15 +21,21 @@ public class JwtUtil {
         return Keys.hmacShaKeyFor(secret.getBytes());
     }
 
-    public String generateToken(String username, String role, Long adminLabId) {
+    public String generateToken(String username, String role, Long adminLabId, String phone) {
         return Jwts.builder()
                 .subject(username)
                 .claim("role", role)
                 .claim("adminLabId", adminLabId)
+                .claim("phone", phone)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expirationMs))
                 .signWith(getKey())
                 .compact();
+    }
+
+    /** Overload for callers that don't yet pass phone (backward compat) */
+    public String generateToken(String username, String role, Long adminLabId) {
+        return generateToken(username, role, adminLabId, null);
     }
 
     public String extractUsername(String token) {
@@ -46,6 +52,10 @@ public class JwtUtil {
         if (val instanceof Long) return (Long) val;
         if (val instanceof Integer) return ((Integer) val).longValue();
         return null;
+    }
+
+    public String extractPhone(String token) {
+        return getClaims(token).get("phone", String.class);
     }
 
     public boolean isTokenValid(String token) {

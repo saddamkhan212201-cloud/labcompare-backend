@@ -36,10 +36,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 String username = jwtUtil.extractUsername(token);
                 String role = jwtUtil.extractRole(token);
                 Long adminLabId = jwtUtil.extractAdminLabId(token);
+                String phone = jwtUtil.extractPhone(token);
 
-                // Store adminLabId as a request attribute so controllers can use it
                 if (adminLabId != null) {
                     request.setAttribute("adminLabId", adminLabId);
+                }
+                if (phone != null) {
+                    request.setAttribute("userPhone", phone);
                 }
 
                 UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(

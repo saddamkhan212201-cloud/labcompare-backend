@@ -59,17 +59,30 @@ public class AuthController {
                 .orElseThrow(() -> new RuntimeException("Invalid username or password"));
         if (!passwordEncoder.matches(req.getPassword(), user.getPassword()))
             throw new RuntimeException("Invalid username or password");
-        String token = jwtUtil.generateToken(user.getUsername(), user.getRole().name(), user.getAdminLabId());
-        LoginResponse resp = new LoginResponse(token, user.getUsername(), user.getRole().name(), user.getAdminLabId());
+
+        // Include phone in JWT so backend can enforce ownership without a DB call
+        String token = jwtUtil.generateToken(
+                user.getUsername(), user.getRole().name(), user.getAdminLabId(), user.getPhone());
+
+        LoginResponse resp = new LoginResponse(
+                token, user.getUsername(), user.getRole().name(), user.getAdminLabId(), user.getPhone());
         return ResponseEntity.ok(ApiResponse.ok("Login successful", resp));
     }
 
-    // ─── Register (saves email) ───────────────────────────────────────────
+    // ─── Register (saves email + phone) ───────────────────────────────────
 
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<String>> register(@RequestBody LoginRequest req) {
         if (userRepository.existsByUsername(req.getUsername()))
             return ResponseEntity.badRequest().body(ApiResponse.error("Username already exists"));
+
+        // Validate phone
+        if (req.getPhone() == null || !req.getPhone().matches("^[6-9]\\d{9}$"))
+            return ResponseEntity.badRequest().body(ApiResponse.error("Enter a valid 10-digit mobile number"));
+
+        // Check phone not already registered
+        if (userRepository.findByPhone(req.getPhone()).isPresent())
+            return ResponseEntity.badRequest().body(ApiResponse.error("This phone number is already registered"));
 
         // If email provided, make sure it isn't already in use
         if (req.getEmail() != null && !req.getEmail().isBlank()) {
@@ -80,9 +93,11 @@ public class AuthController {
 
         User user = new User(req.getUsername(), passwordEncoder.encode(req.getPassword()), User.Role.USER);
         if (req.getEmail() != null && !req.getEmail().isBlank())
-            user.setEmail(req.getEmail());
+            user.setEmail(req.getEmail().trim().toLowerCase());
+        user.setPhone(req.getPhone().trim());
 
         userRepository.save(user);
+        log.info("[Auth] New user registered: {} phone={}", req.getUsername(), req.getPhone());
         return ResponseEntity.ok(ApiResponse.ok("Registration successful", "USER"));
     }
 

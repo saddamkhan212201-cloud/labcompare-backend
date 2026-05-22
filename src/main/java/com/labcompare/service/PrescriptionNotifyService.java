@@ -103,15 +103,19 @@ public class PrescriptionNotifyService {
             String timeNow = now();
             boolean isBookingFlow = bookingRef != null && !bookingRef.isBlank();
 
+            boolean isPayAtLab = "PAY-AT-LAB".equals(razorpayPaymentId);
+
             String subject = isBookingFlow
-                ? "&#9989; Booking Payment ₹" + amountInRupees + " — " + userName + " | Ref: " + bookingRef
+                ? (isPayAtLab
+                    ? "&#128197; Booking Confirmed (Pay at Lab) ₹" + amountInRupees + " — " + userName
+                    : "&#9989; Booking Payment ₹" + amountInRupees + " — " + userName)
                 : "&#9989; Payment ₹" + amountInRupees + " Received — " + userName + " | " + userPhone;
 
             String html = buildPaymentSuccessHtml(
                     userName, userPhone, tests, amountInRupees,
                     razorpayOrderId, razorpayPaymentId, timeNow,
                     bookingRef, labName, appointmentDate, appointmentSlot,
-                    collectionType, collectionAddress);
+                    collectionType, collectionAddress, isPayAtLab);
 
             // ── Build plain-text attachment (test list or booking summary) ──
             StringBuilder txt = new StringBuilder();
@@ -264,7 +268,8 @@ public class PrescriptionNotifyService {
                                             String timeNow,
                                             String bookingRef, String labName,
                                             String appointmentDate, String appointmentSlot,
-                                            String collectionType, String collectionAddress) {
+                                            String collectionType, String collectionAddress,
+                                            boolean isPayAtLab) {
 
         boolean isBookingFlow = bookingRef != null && !bookingRef.isBlank();
 
@@ -286,8 +291,6 @@ public class PrescriptionNotifyService {
         String bookingSection = "";
         if (isBookingFlow) {
             StringBuilder br = new StringBuilder();
-            br.append("<tr><td style='padding:8px 4px;font-size:13px;color:#666;width:45%;border-bottom:1px solid #eef1f8;'>Booking Ref</td>")
-              .append("<td style='padding:8px 4px;font-size:13px;color:#222;font-weight:700;text-align:right;word-break:break-all;border-bottom:1px solid #eef1f8;font-family:monospace;'>").append(esc(bookingRef)).append("</td></tr>");
             if (labName != null)
                 br.append("<tr><td style='padding:8px 4px;font-size:13px;color:#666;border-bottom:1px solid #eef1f8;'>Lab</td>")
                   .append("<td style='padding:8px 4px;font-size:13px;color:#222;font-weight:500;text-align:right;word-break:break-word;border-bottom:1px solid #eef1f8;'>").append(esc(labName)).append("</td></tr>");
@@ -330,8 +333,11 @@ public class PrescriptionNotifyService {
             // header
             + "<div class='hdr-pad' style='background:linear-gradient(135deg,#00b894,#00cec9);padding:28px 32px;text-align:center;'>"
             + "<div style='font-size:24px;font-weight:800;color:#fff;'>&#128154; LabChain</div>"
-            + "<div style='color:rgba(255,255,255,.8);font-size:13px;margin-top:4px;'>Payment Confirmation</div>"
-            + "<div style='display:inline-block;background:#d4edda;color:#155724;border-radius:20px;padding:7px 22px;font-weight:700;font-size:14px;margin-top:16px;'>&#9989; Payment Successful</div>"
+            + "<div style='color:rgba(255,255,255,.8);font-size:13px;margin-top:4px;'>"
+            + (isPayAtLab ? "Booking Confirmation" : "Payment Confirmation") + "</div>"
+            + (isPayAtLab
+                ? "<div style='display:inline-block;background:#fff3cd;color:#856404;border-radius:20px;padding:7px 22px;font-weight:700;font-size:14px;margin-top:16px;'>&#128197; Booking Confirmed &mdash; Pay at Lab</div>"
+                : "<div style='display:inline-block;background:#d4edda;color:#155724;border-radius:20px;padding:7px 22px;font-weight:700;font-size:14px;margin-top:16px;'>&#9989; Payment Successful</div>")
             + "</div>"
 
             // body
@@ -339,16 +345,20 @@ public class PrescriptionNotifyService {
 
             // amount box
             + "<div class='amt-box' style='background:linear-gradient(135deg,#e8f5e9,#f0fff4);border:2px solid #a8d5b5;border-radius:12px;padding:18px;text-align:center;margin-bottom:20px;'>"
-            + "<div style='font-size:12px;text-transform:uppercase;color:#666;letter-spacing:1px;'>Amount Received</div>"
-            + "<div class='amt-num' style='font-size:34px;font-weight:800;color:#00b894;margin-top:6px;'>₹" + amount + "</div>"
+            + "<div style='font-size:12px;text-transform:uppercase;color:#666;letter-spacing:1px;'>"
+            + (isPayAtLab ? "Amount to Collect at Lab" : "Amount Received") + "</div>"
+            + "<div class='amt-num' style='font-size:34px;font-weight:800;color:#00b894;margin-top:6px;'>&#8377;" + amount + "</div>"
             + "</div>"
 
             // intro
             + "<p style='font-size:14px;color:#444;margin-bottom:20px;line-height:1.6;'>"
-            + "Payment received from <strong style='color:#00b894;'>" + esc(userName) + "</strong>. "
-            + (isBookingFlow
-                ? "Booking <strong>" + esc(bookingRef) + "</strong> is confirmed. Please prepare for the appointment."
-                : "Please contact the patient and process the tests listed below.")
+            + (isPayAtLab
+                ? "Booking confirmed for <strong style='color:#00b894;'>" + esc(userName) + "</strong>. "
+                  + "Patient will <strong>pay &#8377;" + amount + " at the lab</strong>. Please prepare for the appointment."
+                : "Payment received from <strong style='color:#00b894;'>" + esc(userName) + "</strong>. "
+                  + (isBookingFlow
+                      ? "Booking is confirmed. Please prepare for the appointment."
+                      : "Please contact the patient and process the tests listed below."))
             + "</p>"
 
             // patient details card
@@ -359,7 +369,7 @@ public class PrescriptionNotifyService {
             +     "<td class='rc' style='padding:8px 4px;font-size:13px;color:#222;font-weight:500;text-align:right;border-bottom:1px solid #eef1f8;word-break:break-word;'>" + esc(userName) + "</td></tr>"
             + "<tr><td class='lc' style='padding:8px 4px;font-size:13px;color:#666;border-bottom:1px solid #eef1f8;'>Phone Number</td>"
             +     "<td class='rc' style='padding:8px 4px;font-size:13px;color:#222;font-weight:500;text-align:right;border-bottom:1px solid #eef1f8;'>" + esc(userPhone) + "</td></tr>"
-            + "<tr><td class='lc' style='padding:8px 4px;font-size:13px;color:#666;'>Paid At</td>"
+            + "<tr><td class='lc' style='padding:8px 4px;font-size:13px;color:#666;'>" + (isPayAtLab ? "Booked At" : "Paid At") + "</td>"
             +     "<td class='rc' style='padding:8px 4px;font-size:13px;color:#222;font-weight:500;text-align:right;'>" + timeNow + "</td></tr>"
             + "</table></div>"
 
@@ -370,14 +380,19 @@ public class PrescriptionNotifyService {
             + "<div class='card-pad' style='background:#f8faff;border:1px solid #e3eaf7;border-radius:12px;padding:16px;margin-bottom:16px;'>"
             + "<div style='font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#00b894;font-weight:700;margin-bottom:12px;padding-bottom:8px;border-bottom:1.5px solid #e3eaf7;'>&#128179; Payment Details</div>"
             + "<table style='width:100%;border-collapse:collapse;'>"
-            + "<tr><td class='lc' style='padding:8px 4px;font-size:13px;color:#666;width:45%;border-bottom:1px solid #eef1f8;'>Razorpay Order ID</td>"
-            +     "<td class='rc' style='padding:8px 4px;font-size:11px;color:#555;font-family:monospace;text-align:right;border-bottom:1px solid #eef1f8;word-break:break-all;'>" + esc(orderId) + "</td></tr>"
-            + "<tr><td class='lc' style='padding:8px 4px;font-size:13px;color:#666;border-bottom:1px solid #eef1f8;'>Payment ID</td>"
-            +     "<td class='rc' style='padding:8px 4px;font-size:11px;color:#555;font-family:monospace;text-align:right;border-bottom:1px solid #eef1f8;word-break:break-all;'>" + esc(paymentId) + "</td></tr>"
-            + "<tr><td class='lc' style='padding:8px 4px;font-size:13px;color:#666;border-bottom:1px solid #eef1f8;'>Amount</td>"
-            +     "<td class='rc' style='padding:8px 4px;font-size:16px;color:#00b894;font-weight:700;text-align:right;border-bottom:1px solid #eef1f8;'>₹" + amount + "</td></tr>"
-            + "<tr><td class='lc' style='padding:8px 4px;font-size:13px;color:#666;'>Status</td>"
-            +     "<td class='rc' style='padding:8px 4px;font-size:13px;color:#00b894;font-weight:700;text-align:right;'>&#9989; Verified</td></tr>"
+            + (isPayAtLab
+                ? "<tr><td class='lc' style='padding:8px 4px;font-size:13px;color:#666;width:45%;border-bottom:1px solid #eef1f8;'>Amount</td>"
+                  + "<td class='rc' style='padding:8px 4px;font-size:16px;color:#00b894;font-weight:700;text-align:right;border-bottom:1px solid #eef1f8;'>&#8377;" + amount + "</td></tr>"
+                  + "<tr><td class='lc' style='padding:8px 4px;font-size:13px;color:#666;'>Status</td>"
+                  + "<td class='rc' style='padding:8px 4px;font-size:13px;color:#f39c12;font-weight:700;text-align:right;'>&#128197; Pending &mdash; Pay at Lab</td></tr>"
+                : "<tr><td class='lc' style='padding:8px 4px;font-size:13px;color:#666;width:45%;border-bottom:1px solid #eef1f8;'>Razorpay Order ID</td>"
+                  + "<td class='rc' style='padding:8px 4px;font-size:11px;color:#555;font-family:monospace;text-align:right;border-bottom:1px solid #eef1f8;word-break:break-all;'>" + esc(orderId) + "</td></tr>"
+                  + "<tr><td class='lc' style='padding:8px 4px;font-size:13px;color:#666;border-bottom:1px solid #eef1f8;'>Payment ID</td>"
+                  + "<td class='rc' style='padding:8px 4px;font-size:11px;color:#555;font-family:monospace;text-align:right;border-bottom:1px solid #eef1f8;word-break:break-all;'>" + esc(paymentId) + "</td></tr>"
+                  + "<tr><td class='lc' style='padding:8px 4px;font-size:13px;color:#666;border-bottom:1px solid #eef1f8;'>Amount</td>"
+                  + "<td class='rc' style='padding:8px 4px;font-size:16px;color:#00b894;font-weight:700;text-align:right;border-bottom:1px solid #eef1f8;'>&#8377;" + amount + "</td></tr>"
+                  + "<tr><td class='lc' style='padding:8px 4px;font-size:13px;color:#666;'>Status</td>"
+                  + "<td class='rc' style='padding:8px 4px;font-size:13px;color:#00b894;font-weight:700;text-align:right;'>&#9989; Verified</td></tr>")
             + "</table></div>"
 
             // test list card

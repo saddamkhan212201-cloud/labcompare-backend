@@ -19,6 +19,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Random;
 
 @RestController
@@ -51,57 +52,107 @@ public class AuthController {
         this.jwtUtil         = jwtUtil;
     }
 
-    // ─── Login ────────────────────────────────────────────────────────────
+    // ─── LOGIN ───────────────────────────────────────────────────────────────
+    //
+    // Accepts email + password (all new USER accounts).
+    // Falls back to username lookup for legacy seeded admin/superadmin accounts
+    // that were created before the email-login migration and have no email set.
+    // Both lookup paths share the same generic error to prevent enumeration.
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<LoginResponse>> login(@RequestBody LoginRequest req) {
-        User user = userRepository.findByUsername(req.getUsername())
-                .orElseThrow(() -> new RuntimeException("Invalid username or password"));
-        if (!passwordEncoder.matches(req.getPassword(), user.getPassword()))
-            throw new RuntimeException("Invalid username or password");
 
-        // Include phone in JWT so backend can enforce ownership without a DB call
+        // Accept whichever identifier the client sent
+        String identifier = (req.getEmail() != null && !req.getEmail().isBlank())
+                ? req.getEmail().trim().toLowerCase()
+                : (req.getUsername() != null ? req.getUsername().trim() : "");
+
+        if (identifier.isEmpty() || req.getPassword() == null || req.getPassword().isBlank())
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Email and password are required"));
+
+        // 1. Try email lookup first (all normal user accounts)
+        Optional<User> found = userRepository.findByEmail(identifier);
+
+        // 2. Fall back to username (legacy admin/superadmin without email)
+        if (found.isEmpty()) {
+            found = userRepository.findByUsername(identifier);
+        }
+
+        // Same message for both "not found" and "wrong password" — no enumeration
+        if (found.isEmpty() || !passwordEncoder.matches(req.getPassword(), found.get().getPassword()))
+            throw new RuntimeException("Invalid email or password");
+
+        User user = found.get();
+
         String token = jwtUtil.generateToken(
                 user.getUsername(), user.getRole().name(), user.getAdminLabId(), user.getPhone());
 
         LoginResponse resp = new LoginResponse(
                 token, user.getUsername(), user.getRole().name(), user.getAdminLabId(), user.getPhone());
+
+        log.info("[Auth] Login success: identifier={} role={}", identifier, user.getRole());
         return ResponseEntity.ok(ApiResponse.ok("Login successful", resp));
     }
 
-    // ─── Register (saves email + phone) ───────────────────────────────────
+    // ─── REGISTER ────────────────────────────────────────────────────────────
+    //
+    // Email is REQUIRED — it becomes the login identifier and the recovery address.
+    // Username is auto-derived from the email local-part so the rest of the system
+    // (JWT subject, booking ownership, admin panel) keeps working unchanged.
 
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<String>> register(@RequestBody LoginRequest req) {
-        if (userRepository.existsByUsername(req.getUsername()))
-            return ResponseEntity.badRequest().body(ApiResponse.error("Username already exists"));
 
-        // Validate phone
+        // ── Validate email ────────────────────────────────────────────────
+        String email = (req.getEmail() != null) ? req.getEmail().trim().toLowerCase() : "";
+        if (email.isEmpty() || !email.matches("^[^@]+@[^@]+\\.[^@]+$"))
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("A valid email address is required"));
+
+        if (userRepository.findByEmail(email).isPresent())
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("An account with this email already exists"));
+
+        // ── Validate password ─────────────────────────────────────────────
+        if (req.getPassword() == null || req.getPassword().length() < 6)
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Password must be at least 6 characters"));
+
+        // ── Validate phone ────────────────────────────────────────────────
         if (req.getPhone() == null || !req.getPhone().matches("^[6-9]\\d{9}$"))
-            return ResponseEntity.badRequest().body(ApiResponse.error("Enter a valid 10-digit mobile number"));
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Enter a valid 10-digit mobile number"));
 
-        // Check phone not already registered
         if (userRepository.findByPhone(req.getPhone()).isPresent())
-            return ResponseEntity.badRequest().body(ApiResponse.error("This phone number is already registered"));
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("This phone number is already registered"));
 
-        // If email provided, make sure it isn't already in use
-        if (req.getEmail() != null && !req.getEmail().isBlank()) {
-            boolean emailTaken = userRepository.findByEmail(req.getEmail().trim().toLowerCase()).isPresent();
-            if (emailTaken)
-                return ResponseEntity.badRequest().body(ApiResponse.error("An account with this email already exists"));
+        // ── Derive a unique username from the email local-part ────────────
+        // Strips non-alphanumeric characters then appends a numeric suffix
+        // until a free slot is found. This keeps username unique without
+        // exposing it to the user (they never see or type it).
+        String base     = email.split("@")[0].replaceAll("[^a-zA-Z0-9_]", "").toLowerCase();
+        if (base.isEmpty()) base = "user";
+        String username = base;
+        int    suffix   = 2;
+        while (userRepository.existsByUsername(username)) {
+            username = base + suffix++;
         }
 
-        User user = new User(req.getUsername(), passwordEncoder.encode(req.getPassword()), User.Role.USER);
-        if (req.getEmail() != null && !req.getEmail().isBlank())
-            user.setEmail(req.getEmail().trim().toLowerCase());
+        User user = new User(username, passwordEncoder.encode(req.getPassword()), User.Role.USER);
+        user.setEmail(email);
         user.setPhone(req.getPhone().trim());
 
         userRepository.save(user);
-        log.info("[Auth] New user registered: {} phone={}", req.getUsername(), req.getPhone());
+        log.info("[Auth] Registered: username={} email={} phone={}", username, email, req.getPhone());
         return ResponseEntity.ok(ApiResponse.ok("Registration successful", "USER"));
     }
 
-    // ─── Forgot Password — Step 1: generate OTP and email it ──────────────
+    // ─── FORGOT PASSWORD — STEP 1: send OTP ──────────────────────────────────
+    //
+    // Always returns HTTP 200 with a generic message regardless of whether
+    // the email is registered — prevents email enumeration attacks.
 
     @PostMapping("/forgot-password")
     public ResponseEntity<ApiResponse<String>> forgotPassword(@RequestBody Map<String, String> req) {
@@ -111,13 +162,13 @@ public class AuthController {
 
         User user = userRepository.findByEmail(email.trim().toLowerCase()).orElse(null);
 
-        // Always return success — prevents email enumeration attacks
         if (user == null) {
-            log.warn("[Auth] Forgot password: no user with email {}", email);
-            return ResponseEntity.ok(ApiResponse.ok("If this email is registered you will receive an OTP shortly.", null));
+            log.warn("[Auth] Forgot-password: no account for email={}", email);
+            return ResponseEntity.ok(ApiResponse.ok(
+                    "If this email is registered you will receive an OTP shortly.", null));
         }
 
-        // Generate 6-digit OTP, store with 10-minute expiry
+        // 6-digit OTP, expires in 10 minutes
         String otp = String.format("%06d", new Random().nextInt(999999));
         user.setResetOtp(otp);
         user.setResetOtpExpiresAt(LocalDateTime.now().plusMinutes(10));
@@ -125,16 +176,17 @@ public class AuthController {
 
         try {
             sendOtpEmail(user.getEmail(), user.getUsername(), otp);
-            log.info("[Auth] OTP sent to {}", email);
+            log.info("[Auth] OTP sent to email={}", email);
         } catch (Exception e) {
-            log.error("[Auth] OTP email failed: {}", e.getMessage());
-            return ResponseEntity.status(500).body(ApiResponse.error("Failed to send OTP email. Please try again."));
+            log.error("[Auth] OTP email failed for email={}: {}", email, e.getMessage());
+            return ResponseEntity.status(500)
+                    .body(ApiResponse.error("Failed to send OTP email. Please try again."));
         }
 
         return ResponseEntity.ok(ApiResponse.ok("OTP sent to your email. It expires in 10 minutes.", null));
     }
 
-    // ─── Forgot Password — Step 2: verify OTP and set new password ────────
+    // ─── FORGOT PASSWORD — STEP 2: verify OTP + set new password ─────────────
 
     @PostMapping("/reset-password")
     public ResponseEntity<ApiResponse<String>> resetPassword(@RequestBody Map<String, String> req) {
@@ -142,28 +194,31 @@ public class AuthController {
         String otp         = req.get("otp");
         String newPassword = req.get("newPassword");
 
-        if (email == null || otp == null || newPassword == null)
-            return ResponseEntity.badRequest().body(ApiResponse.error("Email, OTP and new password are required"));
+        if (email == null || email.isBlank() || otp == null || newPassword == null)
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Email, OTP and new password are required"));
 
         if (newPassword.length() < 6)
-            return ResponseEntity.badRequest().body(ApiResponse.error("Password must be at least 6 characters"));
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Password must be at least 6 characters"));
 
         User user = userRepository.findByEmail(email.trim().toLowerCase()).orElse(null);
 
         if (user == null || !user.isOtpValid(otp.trim()))
-            return ResponseEntity.badRequest().body(ApiResponse.error("Invalid or expired OTP. Please request a new one."));
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Invalid or expired OTP. Please request a new one."));
 
-        // Update password and clear OTP fields
+        // Update password and clear OTP fields atomically
         user.setPassword(passwordEncoder.encode(newPassword));
         user.setResetOtp(null);
         user.setResetOtpExpiresAt(null);
         userRepository.save(user);
 
-        log.info("[Auth] Password reset for {}", email);
+        log.info("[Auth] Password reset for email={}", email);
         return ResponseEntity.ok(ApiResponse.ok("Password reset successful. You can now log in.", null));
     }
 
-    // ─── OTP email via Resend ──────────────────────────────────────────────
+    // ─── OTP EMAIL via Resend ─────────────────────────────────────────────────
 
     private void sendOtpEmail(String toEmail, String username, String otp) throws Exception {
         String html = """
@@ -189,7 +244,7 @@ public class AuthController {
                   </p>
                 </div>
                 <div style="background:#f4f6fb;padding:14px;text-align:center;font-size:12px;color:#999;">
-                  © 2025 LabChain · Auto Notification
+                  &copy; 2025 LabChain &middot; Auto Notification
                 </div>
               </div>
             </body></html>
